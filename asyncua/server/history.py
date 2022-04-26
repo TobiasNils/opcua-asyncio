@@ -259,7 +259,7 @@ class HistoryManager:
             )
         if node in self._handlers:
             raise ua.UaError(f"Node {node} is already historized")
-        await self.storage.new_historized_node(node.nodeid, period, count)
+        await self.storage.new_historized_node(node, period, count)
         handler = await self._sub.subscribe_data_change(node)
         self._handlers[node] = handler
 

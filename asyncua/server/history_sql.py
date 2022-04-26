@@ -35,23 +35,35 @@ class HistorySQLite(HistoryStorageInterface):
         await self._db.close()
         self.logger.info('Historizing SQL connection closed')
 
-    async def new_historized_node(self, node_id, period, count=0):
+    async def new_historized_node(self, node, period, count=0):
+        node_id = node.nodeid
         table = self._get_table_name(node_id)
         self._datachanges_period[node_id] = period, count
-        # create a table for the node which will store attributes of the DataValue object
-        # note: Value/VariantType TEXT is only for human reading, the actual data is stored in VariantBinary column
+        # check if table exists to load last value and avoid failed table creation attempt         
         try:
-            await self._db.execute(
-                f'CREATE TABLE "{table}" (_Id INTEGER PRIMARY KEY NOT NULL,'
-                ' ServerTimestamp TIMESTAMP,'
-                ' SourceTimestamp TIMESTAMP,'
-                ' StatusCode INTEGER,'
-                ' Value TEXT,'
-                ' VariantType TEXT,'
-                ' VariantBinary BLOB)',
-                None,
-            )
-            await self._db.commit()
+            cursor = await self._db.execute(f'SELECT count(name) FROM sqlite_master WHERE \
+                                                                    type="table" AND name="{table}"')
+            result = await cursor.fetchone()
+            if result[0]==1:
+                # table exists; load value 
+                cursor = await self._db.execute(f'SELECT * FROM "{table}" ORDER BY "_Id" DESC')
+                last_row = await cursor.fetchone()
+                last_value = variant_from_binary(Buffer(last_row[6])).Value
+                await node.set_value(last_value)
+            else: 
+                # create a table for the node which will store attributes of the DataValue object
+                # note: Value/VariantType TEXT is only for human reading, the actual data is stored in VariantBinary column
+                await self._db.execute(
+                    f'CREATE TABLE "{table}" (_Id INTEGER PRIMARY KEY NOT NULL,'
+                    ' ServerTimestamp TIMESTAMP,'
+                    ' SourceTimestamp TIMESTAMP,'
+                    ' StatusCode INTEGER,'
+                    ' Value TEXT,'
+                    ' VariantType TEXT,'
+                    ' VariantBinary BLOB)',
+                    None,
+                )
+                await self._db.commit()
         except aiosqlite.Error as e:
             self.logger.info("Historizing SQL Table Creation Error for %s: %s", node_id, e)
 
