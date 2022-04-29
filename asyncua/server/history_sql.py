@@ -37,7 +37,7 @@ class HistorySQLite(HistoryStorageInterface):
 
     async def new_historized_node(self, node, period, count=0):
         node_id = node.nodeid
-        table = await self._get_specific_table_name(node_id)
+        table = await self._get_specific_table_name(node)
         self._datachanges_period[node_id] = period, count
         # check if table exists to load last value and avoid failed table creation attempt         
         try:
@@ -76,7 +76,7 @@ class HistorySQLite(HistoryStorageInterface):
 
     async def save_node_value(self, node, datavalue):
         node_id = node.nodeid
-        table = await self._get_specific_table_name(node_id)
+        table = await self._get_specific_table_name(node)
         
         # insert the data change into the database
         try:
@@ -111,7 +111,7 @@ class HistorySQLite(HistoryStorageInterface):
             )
 
     async def read_node_history(self, node_id, start, end, nb_values):
-        table = await self._get_specific_table_name(node_id)
+        table = await self._get_specific_table_name(node)
         start_time, end_time, order, limit = self._get_bounds(start, end, nb_values)
         cont = None
         results = []
