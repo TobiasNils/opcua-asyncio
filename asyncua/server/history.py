@@ -101,13 +101,15 @@ class HistoryDict(HistoryStorageInterface):
     async def init(self):
         pass
 
-    async def new_historized_node(self, node_id, period, count=0):
+    async def new_historized_node(self, node, period, count=0):
+        node_id = node.nodeid
         if node_id in self._datachanges:
             raise UaNodeAlreadyHistorizedError(node_id)
         self._datachanges[node_id] = []
         self._datachanges_period[node_id] = period, count
 
-    async def save_node_value(self, node_id, datavalue):
+    async def save_node_value(self, node, datavalue):
+        node_id = node.nodeid
         data = self._datachanges[node_id]
         period, count = self._datachanges_period[node_id]
         data.append(datavalue)
@@ -118,7 +120,8 @@ class HistoryDict(HistoryStorageInterface):
         if count and len(data) > count:
             data.pop(0)
 
-    async def read_node_history(self, node_id, start, end, nb_values):
+    async def read_node_history(self, node, start, end, nb_values):
+        node_id = node.nodeid
         cont = None
         if node_id not in self._datachanges:
             logger.warning("Error attempt to read history for a node which is not historized")
@@ -215,7 +218,7 @@ class SubHandler(SubHandler):  # type: ignore
         self.storage = storage
 
     def datachange_notification(self, node, val, data):
-        asyncio.create_task(self.storage.save_node_value(node.nodeid, data.monitored_item.Value))
+        asyncio.create_task(self.storage.save_node_value(node, data.monitored_item.Value))
 
     def event_notification(self, event):
         asyncio.create_task(self.storage.save_event(event))

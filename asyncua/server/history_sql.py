@@ -37,7 +37,7 @@ class HistorySQLite(HistoryStorageInterface):
 
     async def new_historized_node(self, node, period, count=0):
         node_id = node.nodeid
-        table = self._get_table_name(node_id)
+        table = await self._get_table_name(node)
         self._datachanges_period[node_id] = period, count
         # check if table exists to load last value and avoid failed table creation attempt         
         try:
@@ -74,8 +74,8 @@ class HistorySQLite(HistoryStorageInterface):
         except aiosqlite.Error as e:
             self.logger.error("Historizing SQL Delete Old Data Error for %s: %s", node_id, e)
 
-    async def save_node_value(self, node_id, datavalue):
-        table = self._get_table_name(node_id)
+    async def save_node_value(self, node, datavalue):
+        table = self._get_table_name(node)
         # insert the data change into the database
         try:
             await self._db.execute(
@@ -214,8 +214,10 @@ class HistorySQLite(HistoryStorageInterface):
         results = results[:self.max_history_data_response_size]
         return results, cont
 
-    def _get_table_name(self, node_id):
-        return f"{node_id.NamespaceIndex}_{node_id.Identifier}"
+    async def _get_table_name(self, node):
+        name = (await node.read_attribute(ua.AttributeIds.BrowseName)).Value.Value.Name
+        parent_name =(await parent.read_attribute(ua.AttributeIds.BrowseName)).Value.Value.Name
+        return f"{node.nodeid.NamespaceIndex}_{parent_name}_{name}"
 
     async def _get_event_fields(self, evtypes):
         """
