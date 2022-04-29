@@ -37,7 +37,7 @@ class HistorySQLite(HistoryStorageInterface):
 
     async def new_historized_node(self, node, period, count=0):
         node_id = node.nodeid
-        table = await self._get_table_name(node)
+        table = await self._get_specific_table_name(node_id)
         self._datachanges_period[node_id] = period, count
         # check if table exists to load last value and avoid failed table creation attempt         
         try:
@@ -76,7 +76,8 @@ class HistorySQLite(HistoryStorageInterface):
 
     async def save_node_value(self, node, datavalue):
         node_id = node.nodeid
-        table = self._get_table_name(node)
+        table = await self._get_specific_table_name(node_id)
+        
         # insert the data change into the database
         try:
             await self._db.execute(
@@ -110,7 +111,7 @@ class HistorySQLite(HistoryStorageInterface):
             )
 
     async def read_node_history(self, node_id, start, end, nb_values):
-        table = self._get_table_name(node_id)
+        table = await self._get_specific_table_name(node_id)
         start_time, end_time, order, limit = self._get_bounds(start, end, nb_values)
         cont = None
         results = []
@@ -216,6 +217,15 @@ class HistorySQLite(HistoryStorageInterface):
         return results, cont
 
     async def _get_table_name(self, node):
+        name = (await node.read_browse_name()).Name
+        parent = await node.get_parent()
+        parent_name =(await parent.read_browse_name()).Name
+        return f"{node.nodeid.NamespaceIndex}_{parent_name}_{name}"
+
+    def _get_table_name(self, node_id):
+        return f"{node_id.NamespaceIndex}_{node_id.Identifier}"
+
+    async def _get_specific_table_name(self, node):
         name = (await node.read_browse_name()).Name
         parent = await node.get_parent()
         parent_name =(await parent.read_browse_name()).Name
