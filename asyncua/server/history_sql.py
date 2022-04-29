@@ -75,6 +75,7 @@ class HistorySQLite(HistoryStorageInterface):
             self.logger.error("Historizing SQL Delete Old Data Error for %s: %s", node_id, e)
 
     async def save_node_value(self, node, datavalue):
+        node_id = node.nodeid
         table = self._get_table_name(node)
         # insert the data change into the database
         try:
