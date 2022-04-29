@@ -30,7 +30,7 @@ if sys.version_info.minor < 10:
             return res
         return ()
 else:
-    from typing import get_origin, get_args
+    from typing import get_origin, get_args  # type: ignore
 
 
 from asyncua.ua import status_codes
@@ -317,8 +317,6 @@ class StatusCode:
     def check(self):
         """
         Raises an exception if the status code is anything else than 0 (good).
-
-        Use the is_good() method if you do not want an exception.
         """
         if not self.is_good():
             raise UaStatusCodeError(self.value)
