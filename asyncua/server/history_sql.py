@@ -215,8 +215,9 @@ class HistorySQLite(HistoryStorageInterface):
         return results, cont
 
     async def _get_table_name(self, node):
-        name = (await node.read_attribute(ua.AttributeIds.BrowseName)).Value.Value.Name
-        parent_name =(await parent.read_attribute(ua.AttributeIds.BrowseName)).Value.Value.Name
+        name = (await node.read_browse_name()).Name
+        parent = await node.get_parent()
+        parent_name =(await parent.read_browse_name()).Name
         return f"{node.nodeid.NamespaceIndex}_{parent_name}_{name}"
 
     async def _get_event_fields(self, evtypes):
