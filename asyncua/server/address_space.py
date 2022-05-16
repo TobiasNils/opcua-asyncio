@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import collections.abc
+import dataclasses
 import logging
 import pickle
 import shelve
@@ -780,8 +781,12 @@ class AddressSpace:
         attval = node.attributes.get(attr, None)
         if attval is None:
             return ua.StatusCode(ua.StatusCodes.BadAttributeIdInvalid)
-
-        if not self._is_expected_variant_type(value, attval, node):
+        if value.StatusCode is not None and not value.StatusCode.is_good():
+            # https://reference.opcfoundation.org/v104/Core/docs/Part4/7.7.1/
+            # If the StatusCode indicates an error then the value is to be ignored and the Server shall set it to null.
+            value = dataclasses.replace(value, Value=ua.Variant(ua.Null(), ua.VariantType.Null))
+        elif not self._is_expected_variant_type(value, attval, node):
+            # Only check datatype if no bad StatusCode is set
             return ua.StatusCode(ua.StatusCodes.BadTypeMismatch)
 
         old = attval.value

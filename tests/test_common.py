@@ -642,6 +642,18 @@ async def test_write_value(opc):
     await opc.opc.delete_nodes([v])
 
 
+async def test_write_value_statuscode_bad(opc):
+    o = opc.opc.nodes.objects
+    var = ua.Variant('Some value that should not be set!')
+    dvar = ua.DataValue(ua.Null(), StatusCode_=ua.StatusCode(ua.StatusCodes.BadDeviceFailure))
+    v = await o.add_variable(3, 'VariableValueBad', var)
+    await v.write_value(dvar)
+    with pytest.raises(ua.UaStatusCodeError) as error_read:
+        await v.read_data_value()
+    assert error_read.type.code == dvar.StatusCode.value
+    await opc.opc.delete_nodes([v])
+
+
 async def test_array_value(opc):
     o = opc.opc.nodes.objects
     v = await o.add_variable(3, 'VariableArrayValue', [1, 2, 3])
@@ -1014,7 +1026,7 @@ async def test_instantiate_abstract(opc):
     finit_statemachine_type = opc.opc.get_node("ns=0;i=2771")  # IsAbstract=True
     with pytest.raises(ua.UaError):
         node = await instantiate(opc.opc.nodes.objects, finit_statemachine_type, bname="2:TestFiniteStateMachine")
-        
+
 
 async def test_variable_with_datatype(opc):
     v1 = await opc.opc.nodes.objects.add_variable(
@@ -1489,3 +1501,12 @@ async def test_custom_method_with_enum(opc):
     result = await opc.opc.nodes.objects.call_method(methodid, ua.MyCustEnumForMethod.titi, ua.MyCustEnumForMethod.titi, ua.MyCustEnumForMethod.titi)
 
     assert result == ua.MyCustEnumForMethod.toto
+
+async def test_sub_class(opc):
+    idx = 4
+    struct_with_sub = ua.PublishedDataSetDataType('Test', [''], ua.DataSetMetaDataType(), [], ua.PublishedEventsDataType(ua.NodeId(NamespaceIndex=1), [], ua.ContentFilter([])))
+    var = await opc.opc.nodes.objects.add_variable(idx, "struct with sub", struct_with_sub, datatype=struct_with_sub.data_type)
+    await var.write_value(struct_with_sub)
+    val = await var.read_value()
+    assert val == struct_with_sub
+    assert val.DataSetSource == struct_with_sub.DataSetSource
