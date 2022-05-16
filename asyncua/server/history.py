@@ -362,7 +362,7 @@ class HistoryManager:
             starttime = ua.ua_binary.Primitives.DateTime.unpack(Buffer(rv.ContinuationPoint))
 
         dv, cont = await self.storage.read_node_history(
-            rv, starttime, details.EndTime, details.NumValuesPerNode
+            rv.NodeId, starttime, details.EndTime, details.NumValuesPerNode
         )
         if cont:
             cont = ua.ua_binary.Primitives.DateTime.pack(cont)
@@ -380,7 +380,7 @@ class HistoryManager:
             starttime = ua.ua_binary.Primitives.DateTime.unpack(Buffer(rv.ContinuationPoint))
 
         evts, cont = await self.storage.read_event_history(
-            rv, starttime, details.EndTime, details.NumValuesPerNode, details.Filter
+            rv.NodeId, starttime, details.EndTime, details.NumValuesPerNode, details.Filter
         )
         results = []
         for ev in evts:
