@@ -110,7 +110,8 @@ class HistorySQLite(HistoryStorageInterface):
                 node_id,
             )
 
-    async def read_node_history(self, node_id, start, end, nb_values):
+    async def read_node_history(self, node, start, end, nb_values):
+        node_id = node.nodeid
         table = await self._get_specific_table_name(node)
         start_time, end_time, order, limit = self._get_bounds(start, end, nb_values)
         cont = None
