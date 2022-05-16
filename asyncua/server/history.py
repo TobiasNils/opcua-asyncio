@@ -37,14 +37,14 @@ class HistoryStorageInterface:
         """
         raise NotImplementedError
 
-    async def save_node_value(self, node_id, datavalue):
+    async def save_node_value(self, node, datavalue):
         """
         Called when the value of a historized node has changed and should be saved in history
         Returns None
         """
         raise NotImplementedError
 
-    async def read_node_history(self, node_id, start, end, nb_values):
+    async def read_node_history(self, node, start, end, nb_values):
         """
         Called when a client make a history read request for a node
         if start or end is missing then nb_values is used to limit query
@@ -362,7 +362,7 @@ class HistoryManager:
             starttime = ua.ua_binary.Primitives.DateTime.unpack(Buffer(rv.ContinuationPoint))
 
         dv, cont = await self.storage.read_node_history(
-            rv.NodeId, starttime, details.EndTime, details.NumValuesPerNode
+            rv, starttime, details.EndTime, details.NumValuesPerNode
         )
         if cont:
             cont = ua.ua_binary.Primitives.DateTime.pack(cont)
@@ -380,7 +380,7 @@ class HistoryManager:
             starttime = ua.ua_binary.Primitives.DateTime.unpack(Buffer(rv.ContinuationPoint))
 
         evts, cont = await self.storage.read_event_history(
-            rv.NodeId, starttime, details.EndTime, details.NumValuesPerNode, details.Filter
+            rv, starttime, details.EndTime, details.NumValuesPerNode, details.Filter
         )
         results = []
         for ev in evts:
