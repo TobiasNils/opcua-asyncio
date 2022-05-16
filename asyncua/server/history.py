@@ -310,7 +310,7 @@ class HistoryManager:
         else:
             logger.error("History Manager isn't subscribed to %s", node)
 
-    async def read_history(self, params):
+    async def read_history(self, node,  params):
         """
         Read history for a node
         This is the part AttributeService, but implemented as its own service
@@ -319,11 +319,11 @@ class HistoryManager:
         results = []
 
         for rv in params.NodesToRead:
-            res = await self._read_history(params.HistoryReadDetails, rv)
+            res = await self._read_history(node, params.HistoryReadDetails, rv)
             results.append(res)
         return results
 
-    async def _read_history(self, details, rv):
+    async def _read_history(self, node, details, rv):
         """
         determine if the history read is for a data changes or events;
         then read the history for that node
@@ -335,7 +335,7 @@ class HistoryManager:
                 # we do not support modified history by design so we return what we have
             else:
                 result.HistoryData = ua.HistoryData()
-            dv, cont = await self._read_datavalue_history(rv, details)
+            dv, cont = await self._read_datavalue_history(node, rv, details)
             result.HistoryData.DataValues = dv
             result.ContinuationPoint = cont
 
@@ -352,7 +352,7 @@ class HistoryManager:
             result.StatusCode = ua.StatusCode(ua.StatusCodes.BadNotImplemented)
         return result
 
-    async def _read_datavalue_history(self, rv, details):
+    async def _read_datavalue_history(self, node, rv, details):
         starttime = details.StartTime
         if rv.ContinuationPoint:
             # Spec says we should ignore details if cont point is present
@@ -362,7 +362,7 @@ class HistoryManager:
             starttime = ua.ua_binary.Primitives.DateTime.unpack(Buffer(rv.ContinuationPoint))
 
         dv, cont = await self.storage.read_node_history(
-            rv.NodeId, starttime, details.EndTime, details.NumValuesPerNode
+            node, rv.NodeId, starttime, details.EndTime, details.NumValuesPerNode
         )
         if cont:
             cont = ua.ua_binary.Primitives.DateTime.pack(cont)

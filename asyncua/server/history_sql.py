@@ -110,8 +110,8 @@ class HistorySQLite(HistoryStorageInterface):
                 node_id,
             )
 
-    async def read_node_history(self, node_id, start, end, nb_values):
-        table = await self._get_specific_table_name(node_id)
+    async def read_node_history(self, node, node_id, start, end, nb_values):
+        table = await self._get_specific_table_name(node, node_id)
         start_time, end_time, order, limit = self._get_bounds(start, end, nb_values)
         cont = None
         results = []
@@ -225,7 +225,7 @@ class HistorySQLite(HistoryStorageInterface):
     def _get_table_name(self, node_id):
         return f"{node_id.NamespaceIndex}_{node_id.Identifier}"
 
-    async def _get_specific_table_name(self, node):
+    async def _get_specific_table_name(self, node, node_id):
         name = (await node.read_browse_name()).Name
         parent = await node.get_parent()
         parent_name =(await parent.read_browse_name()).Name
