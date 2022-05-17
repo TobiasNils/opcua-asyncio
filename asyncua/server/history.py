@@ -37,14 +37,14 @@ class HistoryStorageInterface:
         """
         raise NotImplementedError
 
-    async def save_node_value(self, node, datavalue):
+    async def save_node_value(self, node_id, datavalue):
         """
         Called when the value of a historized node has changed and should be saved in history
         Returns None
         """
         raise NotImplementedError
 
-    async def read_node_history(self, node, start, end, nb_values):
+    async def read_node_history(self, node_id, start, end, nb_values):
         """
         Called when a client make a history read request for a node
         if start or end is missing then nb_values is used to limit query
@@ -101,15 +101,13 @@ class HistoryDict(HistoryStorageInterface):
     async def init(self):
         pass
 
-    async def new_historized_node(self, node, period, count=0):
-        node_id = node.nodeid
+    async def new_historized_node(self, node_id, period, count=0):
         if node_id in self._datachanges:
             raise UaNodeAlreadyHistorizedError(node_id)
         self._datachanges[node_id] = []
         self._datachanges_period[node_id] = period, count
 
-    async def save_node_value(self, node, datavalue):
-        node_id = node.nodeid
+    async def save_node_value(self, node_id, datavalue):
         data = self._datachanges[node_id]
         period, count = self._datachanges_period[node_id]
         data.append(datavalue)
@@ -120,8 +118,7 @@ class HistoryDict(HistoryStorageInterface):
         if count and len(data) > count:
             data.pop(0)
 
-    async def read_node_history(self, node, start, end, nb_values):
-        node_id = node.nodeid
+    async def read_node_history(self, node_id, start, end, nb_values):
         cont = None
         if node_id not in self._datachanges:
             logger.warning("Error attempt to read history for a node which is not historized")
@@ -310,7 +307,7 @@ class HistoryManager:
         else:
             logger.error("History Manager isn't subscribed to %s", node)
 
-    async def read_history(self, node,  params):
+    async def read_history(self, params):
         """
         Read history for a node
         This is the part AttributeService, but implemented as its own service
@@ -319,11 +316,11 @@ class HistoryManager:
         results = []
 
         for rv in params.NodesToRead:
-            res = await self._read_history(node, params.HistoryReadDetails, rv)
+            res = await self._read_history(params.HistoryReadDetails, rv)
             results.append(res)
         return results
 
-    async def _read_history(self, node, details, rv):
+    async def _read_history(self, details, rv):
         """
         determine if the history read is for a data changes or events;
         then read the history for that node
@@ -335,7 +332,7 @@ class HistoryManager:
                 # we do not support modified history by design so we return what we have
             else:
                 result.HistoryData = ua.HistoryData()
-            dv, cont = await self._read_datavalue_history(node, rv, details)
+            dv, cont = await self._read_datavalue_history(rv, details)
             result.HistoryData.DataValues = dv
             result.ContinuationPoint = cont
 
@@ -352,7 +349,7 @@ class HistoryManager:
             result.StatusCode = ua.StatusCode(ua.StatusCodes.BadNotImplemented)
         return result
 
-    async def _read_datavalue_history(self, node, rv, details):
+    async def _read_datavalue_history(self, rv, details):
         starttime = details.StartTime
         if rv.ContinuationPoint:
             # Spec says we should ignore details if cont point is present
@@ -361,8 +358,9 @@ class HistoryManager:
             # send correctly with continuation point
             starttime = ua.ua_binary.Primitives.DateTime.unpack(Buffer(rv.ContinuationPoint))
 
+        node = Node(self.iserver.isession, rv.NodeId)
         dv, cont = await self.storage.read_node_history(
-            node, rv.NodeId, starttime, details.EndTime, details.NumValuesPerNode
+            node, starttime, details.EndTime, details.NumValuesPerNode
         )
         if cont:
             cont = ua.ua_binary.Primitives.DateTime.pack(cont)
