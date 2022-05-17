@@ -5,7 +5,7 @@ from typing import Iterable
 from datetime import timedelta
 from datetime import datetime
 
-from asyncua import ua, Node
+from asyncua import ua
 from ..ua.ua_binary import variant_from_binary, variant_to_binary
 from ..common.utils import Buffer
 from ..common.events import Event, get_event_properties_from_type_node
@@ -37,7 +37,7 @@ class HistorySQLite(HistoryStorageInterface):
 
     async def new_historized_node(self, node, period, count=0):
         node_id = node.nodeid
-        table = await self._get_specific_table_name(node_id)
+        table = await self._get_specific_table_name(node)
         self._datachanges_period[node_id] = period, count
         # check if table exists to load last value and avoid failed table creation attempt         
         try:
@@ -76,7 +76,7 @@ class HistorySQLite(HistoryStorageInterface):
 
     async def save_node_value(self, node, datavalue):
         node_id = node.nodeid
-        table = await self._get_specific_table_name(node, node_id)
+        table = await self._get_specific_table_name(node)
         
         # insert the data change into the database
         try:
@@ -111,7 +111,7 @@ class HistorySQLite(HistoryStorageInterface):
             )
 
     async def read_node_history(self, node, start, end, nb_values):
-        table = await self._get_specific_table_name(node_id)
+        table = await self._get_specific_table_name(node)
         start_time, end_time, order, limit = self._get_bounds(start, end, nb_values)
         cont = None
         results = []
@@ -223,7 +223,7 @@ class HistorySQLite(HistoryStorageInterface):
         name = (await node.read_browse_name()).Name
         parent = await node.get_parent()
         parent_name =(await parent.read_browse_name()).Name
-        return f"{node_id.NamespaceIndex}_{parent_name}_{name}"
+        return f"{node.nodeid.NamespaceIndex}_{parent_name}_{name}"
 
     async def _get_event_fields(self, evtypes):
         """

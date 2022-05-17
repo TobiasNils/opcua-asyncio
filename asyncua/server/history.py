@@ -3,7 +3,7 @@ import logging
 from datetime import timedelta
 from datetime import datetime
 
-from asyncua import ua
+from asyncua import ua, Node
 from ..common.subscription import Subscription, SubHandler
 from ..common.utils import Buffer
 
