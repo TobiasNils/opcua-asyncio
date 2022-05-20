@@ -565,7 +565,7 @@ class Node:
         params.TimestampsToReturn = ua.TimestampsToReturn.Both
         params.ReleaseContinuationPoints = False
         params.NodesToRead.append(valueid)
-        return (await self.server.history_read(self, params))[0]
+        return (await self.server.history_read(params))[0]
 
     async def read_event_history(self, starttime=None, endtime=None, numvalues=0, evtypes=ua.ObjectIds.BaseEventType):
         """
