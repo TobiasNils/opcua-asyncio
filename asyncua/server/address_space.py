@@ -294,7 +294,7 @@ class NodeManagementService:
 
         parentdata = self._aspace.get(item.ParentNodeId)
         if parentdata is None and not item.ParentNodeId.is_null():
-            self.logger.info(
+            self.logger.debug(
                 "add_node: while adding node %s, requested parent node %s does not exists",
                 item.RequestedNewNodeId,
                 item.ParentNodeId,
