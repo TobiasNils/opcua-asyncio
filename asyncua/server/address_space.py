@@ -716,7 +716,7 @@ class AddressSpace:
 
         Note: Intended for slow devices, such as Raspberry Pi, to greatly improve start up time
         """
-        raise NotImplementedError
+        #raise NotImplementedError
 
         # ToDo: async friendly implementation - load all at once?
         class LazyLoadingDict(collections.abc.MutableMapping):
