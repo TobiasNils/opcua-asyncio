@@ -209,8 +209,10 @@ class Client:
         try:
             await self.send_hello()
             await self.open_secure_channel()
-            endpoints = await self.get_endpoints()
-            await self.close_secure_channel()
+            try:
+                endpoints = await self.get_endpoints()
+            finally:
+                await self.close_secure_channel()
         finally:
             self.disconnect_socket()
         return endpoints
@@ -223,8 +225,10 @@ class Client:
         try:
             await self.send_hello()
             await self.open_secure_channel()  # spec says it should not be necessary to open channel
-            servers = await self.find_servers()
-            await self.close_secure_channel()
+            try:
+                servers = await self.find_servers()
+            finally:
+                await self.close_secure_channel()
         finally:
             self.disconnect_socket()
         return servers
@@ -237,8 +241,10 @@ class Client:
         try:
             await self.send_hello()
             await self.open_secure_channel()
-            servers = await self.find_servers_on_network()
-            await self.close_secure_channel()
+            try:
+                servers = await self.find_servers_on_network()
+            finally:
+                await self.close_secure_channel()
         finally:
             self.disconnect_socket()
         return servers
@@ -253,7 +259,12 @@ class Client:
         try:
             await self.send_hello()
             await self.open_secure_channel()
-            await self.create_session()
+            try:
+                await self.create_session()
+            except Exception:
+                # clean up secure channel
+                self.close_secure_channel()
+                raise
         except Exception:
             # clean up open socket
             self.disconnect_socket()
@@ -447,6 +458,7 @@ class Client:
         """
         Activate session using either username and password or private_key
         """
+        user_certificate = certificate or self.user_certificate
         params = ua.ActivateSessionParameters()
         challenge = b""
         if self.security_policy.peer_certificate is not None:
@@ -459,10 +471,10 @@ class Client:
             params.ClientSignature.Algorithm = (security_policies.SecurityPolicyBasic256.AsymmetricSignatureURI)
         params.ClientSignature.Signature = self.security_policy.asymmetric_cryptography.signature(challenge)
         params.LocaleIds = self._locale
-        if not username and not certificate:
+        if not username and not user_certificate:
             self._add_anonymous_auth(params)
-        elif certificate:
-            self._add_certificate_auth(params, certificate, challenge)
+        elif user_certificate:
+            self._add_certificate_auth(params, user_certificate, challenge)
         else:
             self._add_user_auth(params, username, password)
         return await self.uaclient.activate_session(params)
@@ -638,18 +650,19 @@ class Client:
     async def delete_nodes(self, nodes, recursive=False) -> Coroutine:
         return await delete_nodes(self.uaclient, nodes, recursive)
 
-    async def import_xml(self, path=None, xmlstring=None) -> Coroutine:
+    async def import_xml(self, path=None, xmlstring=None, strict_mode=True) -> Coroutine:
         """
         Import nodes defined in xml
         """
-        importer = XmlImporter(self)
+        importer = XmlImporter(self, strict_mode=strict_mode)
         return await importer.import_xml(path, xmlstring)
 
-    async def export_xml(self, nodes, path):
+    async def export_xml(self, nodes, path, export_values: bool = False):
         """
         Export defined nodes to xml
+        :param export_values: exports values from variants
         """
-        exp = XmlExporter(self)
+        exp = XmlExporter(self, export_values=export_values)
         await exp.build_etree(nodes)
         await exp.write_xml(path)
 
