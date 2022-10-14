@@ -45,14 +45,16 @@ class HistorySQLite(HistoryStorageInterface):
                                                                     type="table" AND name="{table}"')
             result = await cursor.fetchone()
             if result[0]==1:
-                # table exists; load value 
+                # table exists; try to load value 
                 cursor = await self._db.execute(f'SELECT * FROM "{table}" ORDER BY "_Id" DESC')
                 last_row = await cursor.fetchone()
-                #last_value = variant_from_binary(Buffer(last_row[6])).Value
-                #await node.set_value(last_value)
-                last_value = variant_from_binary(Buffer(last_row[6]))
-                dv = ua.DataValue(last_value, SourceTimestamp = last_row[2])
-                await node.write_attribute(ua.AttributeIds.Value, dv)
+                # if table is empty, last_row is NoneType and trying to access values results in TypeError
+                # So we make sure last_row is not None:
+                if last_row:
+                    # if last_row is not 
+                    last_value = variant_from_binary(Buffer(last_row[6]))
+                    dv = ua.DataValue(last_value, SourceTimestamp = last_row[2])
+                    await node.write_attribute(ua.AttributeIds.Value, dv)                
             else: 
                 # create a table for the node which will store attributes of the DataValue object
                 # note: Value/VariantType TEXT is only for human reading, the actual data is stored in VariantBinary column
