@@ -39,23 +39,23 @@ class HistorySQLite(HistoryStorageInterface):
         node_id = node.nodeid
         table = await self._get_specific_table_name(node)
         self._datachanges_period[node_id] = period, count
-        # check if table exists to load last value and avoid failed table creation attempt         
+        # check if table exists to load last value and avoid failed table creation attempt
         try:
             cursor = await self._db.execute(f'SELECT count(name) FROM sqlite_master WHERE \
                                                                     type="table" AND name="{table}"')
             result = await cursor.fetchone()
-            if result[0]==1:
-                # table exists; try to load value 
+            if result[0] == 1:
+                # table exists; try to load value
                 cursor = await self._db.execute(f'SELECT * FROM "{table}" ORDER BY "_Id" DESC')
                 last_row = await cursor.fetchone()
                 # if table is empty, last_row is NoneType and trying to access values results in TypeError
                 # So we make sure last_row is not None:
                 if last_row:
-                    # if last_row is not 
                     last_value = variant_from_binary(Buffer(last_row[6]))
-                    dv = ua.DataValue(last_value, SourceTimestamp = last_row[2])
-                    await node.write_attribute(ua.AttributeIds.Value, dv)                
-            else: 
+                    dv = ua.DataValue(last_value, SourceTimestamp=last_row[2])
+                    await node.write_attribute(ua.AttributeIds.Value, dv)
+                    await self.save_node_value(node, dv)
+            else:
                 # create a table for the node which will store attributes of the DataValue object
                 # note: Value/VariantType TEXT is only for human reading, the actual data is stored in VariantBinary column
                 await self._db.execute(
@@ -82,7 +82,7 @@ class HistorySQLite(HistoryStorageInterface):
     async def save_node_value(self, node, datavalue):
         node_id = node.nodeid
         table = await self._get_specific_table_name(node)
-        
+
         # insert the data change into the database
         try:
             await self._db.execute(
@@ -227,7 +227,7 @@ class HistorySQLite(HistoryStorageInterface):
     async def _get_specific_table_name(self, node):
         name = (await node.read_browse_name()).Name
         parent = await node.get_parent()
-        parent_name =(await parent.read_browse_name()).Name
+        parent_name = (await parent.read_browse_name()).Name
         return f"{node.nodeid.NamespaceIndex}_{parent_name}_{name}"
 
     async def _get_event_fields(self, evtypes):
