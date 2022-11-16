@@ -88,18 +88,24 @@ class {self.name}:
             field.uatype = "UInt32"
             self.fields = [field] + self.fields
         for sfield in self.fields:
-            uatype = f"'ua.{sfield.uatype}'"
-            if sfield.array:
-                uatype = f"List[{uatype}]"
-            if uatype == 'List[ua.Char]':
-                uatype = 'String'
-            if sfield.is_optional:
-                code += f"    {sfield.name}: Optional[{uatype}] = None\n"
-            else:
-                uavalue = sfield.value
-                if isinstance(uavalue, str) and uavalue.startswith("ua."):
-                    uavalue = f"field(default_factory=lambda: {uavalue})"
-                code += f"    {sfield.name}:{uatype} = {uavalue}\n"
+            if sfield.name != 'SwitchField':
+                '''
+                SwitchFields is the 'Encoding' Field in OptionSets to be
+                compatible with 1.04 structs we added
+                the 'Encoding' Field before and skip the SwitchField Field
+                '''
+                uatype = f"'ua.{sfield.uatype}'"
+                if sfield.array:
+                    uatype = f"List[{uatype}]"
+                if uatype == 'List[ua.Char]':
+                    uatype = 'String'
+                if sfield.is_optional:
+                    code += f"    {sfield.name}: Optional[{uatype}] = None\n"
+                else:
+                    uavalue = sfield.value
+                    if isinstance(uavalue, str) and uavalue.startswith("ua."):
+                        uavalue = f"field(default_factory=lambda: {uavalue})"
+                    code += f"    {sfield.name}:{uatype} = {uavalue}\n"
         return code
 
 
@@ -168,7 +174,7 @@ class StructGenerator(object):
                             # Optional Field
                             field.is_optional = True
                             struct.option_counter += 1
-                        field.value = get_default_value(field.uatype, enums)
+                        field.value = get_default_value(field.uatype, enums, hack=True)
                         if array:
                             field.array = True
                             field.value = "field(default_factory=list)"

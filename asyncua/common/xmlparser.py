@@ -58,6 +58,7 @@ class NodeData:
         self.accesslevel = None
         self.useraccesslevel = None
         self.minsample = None
+        self.historizing = False
 
         # referencetype
         self.inversename = ""
@@ -76,7 +77,7 @@ class NodeData:
 
 class Field:
     def __init__(self, data):
-        self.datatype = data.get("DataType", "")
+        self.datatype = data.get("DataType", "i=24")  # Default is BaseDataType
         self.name = data.get("Name")
         self.dname = data.get("DisplayName", "")
         self.optional = bool(data.get("IsOptional", False))
@@ -84,6 +85,7 @@ class Field:
         self.arraydim = data.get("ArrayDimensions", None)  # FIXME: check type
         self.value = int(data.get("Value", 0))
         self.desc = data.get("Description", "")
+        self.max_str_len = int(data.get("MaxStringLength", 0))
 
 
 class RefStruct:
@@ -396,7 +398,7 @@ class XMLParser:
         if nsval is not None:
             ns = string_to_val(nsval.text, ua.VariantType.UInt16)
         v = ua.QualifiedName(name, ns)
-        self.logger.error(f"qn: {v}")
+        self.logger.warning("qn: %s", v)
         return v
 
     def _parse_refs(self, el, obj):
@@ -449,7 +451,7 @@ class XMLParser:
         for model in self.root.findall('base:Models/base:Model', self.ns):
             uri = model.attrib.get('ModelUri')
             if uri is not None:
-                version = model.attrib.get('Version', ua.String())
+                version = model.attrib.get('Version', '')
                 date_time = model.attrib.get('PublicationDate')
                 if date_time is None:
                     date_time = ua.DateTime(1, 1, 1)

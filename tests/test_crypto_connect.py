@@ -3,6 +3,9 @@ import pytest
 import asyncio
 
 from asyncio import TimeoutError
+
+from asyncua.crypto.uacrypto import CertProperties
+
 from asyncua import Client
 from asyncua import Server
 from asyncua import ua
@@ -165,6 +168,25 @@ async def test_basic256_encrypt_success(srv_crypto_all_certs):
         assert await clt.nodes.objects.get_children()
 
 
+async def test_basic256_encrypt_use_certificate_bytes(srv_crypto_all_certs):
+    clt = Client(uri_crypto)
+    _, cert = srv_crypto_all_certs
+    with open(cert, 'rb') as server_cert, \
+            open(f"{EXAMPLE_PATH}certificate-example.der", 'rb') as user_cert, \
+            open(f"{EXAMPLE_PATH}private-key-example.pem", 'rb') as user_key:
+        await clt.set_security(
+            security_policies.SecurityPolicyBasic256Sha256,
+            user_cert.read(),
+            CertProperties(user_key.read(), extension="pem"),
+            None,
+            server_cert.read(),
+            ua.MessageSecurityMode.SignAndEncrypt
+        )
+
+    async with clt:
+        assert await clt.nodes.objects.get_children()
+
+
 @pytest.mark.skip("# FIXME: how to make it fail???")
 async def test_basic256_encrypt_fail(srv_crypto_all_certs):
     # FIXME: how to make it fail???
@@ -179,6 +201,22 @@ async def test_basic256_encrypt_fail(srv_crypto_all_certs):
             None,
             mode=ua.MessageSecurityMode.None_
         )
+
+
+async def test_Aes128Sha256RsaOaep_encrypt_success(srv_crypto_all_certs):
+    clt = Client(uri_crypto)
+    _, cert = srv_crypto_all_certs
+    await clt.set_security(
+        security_policies.SecurityPolicyAes128Sha256RsaOaep,
+        f"{EXAMPLE_PATH}certificate-example.der",
+        f"{EXAMPLE_PATH}private-key-example.pem",
+        None,
+        cert,
+        ua.MessageSecurityMode.SignAndEncrypt
+    )
+
+    async with clt:
+        assert await clt.nodes.objects.get_children()
 
 
 async def test_certificate_handling_success(srv_crypto_one_cert):
@@ -216,7 +254,7 @@ async def test_encrypted_private_key_handling_success_with_cert_props(srv_crypto
     clt = Client(uri_crypto_cert)
     user_cert = uacrypto.CertProperties(encrypted_private_key_peer_creds['certificate'], "DER")
     user_key = uacrypto.CertProperties(
-        path=encrypted_private_key_peer_creds['private_key'],
+        path_or_content=encrypted_private_key_peer_creds['private_key'],
         password=encrypted_private_key_peer_creds['password'],
         extension="PEM",
     )
@@ -248,10 +286,6 @@ async def test_certificate_handling_failure(srv_crypto_one_cert):
         async with clt:
             assert await clt.get_objects_node().get_children()
 
-    with pytest.raises(ua.uaerrors.BadUserAccessDenied):
-        # disconnect manually to close the event loop and appease pytest
-        await clt.disconnect()
-
 
 async def test_encrypted_private_key_handling_failure(srv_crypto_one_cert):
     _, cert = srv_crypto_one_cert
@@ -268,10 +302,6 @@ async def test_encrypted_private_key_handling_failure(srv_crypto_one_cert):
         )
         async with clt:
             assert await clt.get_objects_node().get_children()
-
-    with pytest.raises(ua.uaerrors.BadUserAccessDenied):
-        # disconnect manually to close the event loop and appease pytest
-        await clt.disconnect()
 
 
 async def test_certificate_handling_mismatched_creds(srv_crypto_one_cert):
@@ -293,13 +323,13 @@ async def test_certificate_handling_mismatched_creds(srv_crypto_one_cert):
 
 
 async def test_secure_channel_key_expiration(srv_crypto_one_cert, mocker):
-    timeout = 1
+    timeout = 3
     _, cert = srv_crypto_one_cert
     clt = Client(uri_crypto_cert)
     clt.secure_channel_timeout = timeout * 1000
     user_cert = uacrypto.CertProperties(peer_creds['certificate'], "DER")
     user_key = uacrypto.CertProperties(
-        path=peer_creds['private_key'],
+        path_or_content=peer_creds['private_key'],
         extension="PEM",
     )
     server_cert = uacrypto.CertProperties(cert)
@@ -413,9 +443,6 @@ async def test_anonymous_rejection():
         cert,
         mode=ua.MessageSecurityMode.SignAndEncrypt
     )
-    with pytest.raises(ua.UaStatusCodeError) as exc_info:
+    with pytest.raises(ua.uaerrors.BadIdentityTokenRejected):
         await clt.connect()
-    with pytest.raises(ua.UaStatusCodeError):
-        await clt.disconnect()
-    assert ua.StatusCodes.BadIdentityTokenRejected == exc_info.type.code
     await srv.stop()

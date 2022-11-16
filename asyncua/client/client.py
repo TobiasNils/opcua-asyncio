@@ -1,7 +1,7 @@
 import asyncio
 import logging
-from typing import List, Union, Coroutine, Optional
-from urllib.parse import urlparse
+from typing import List, Union, Coroutine, Optional, Type
+from urllib.parse import urlparse, unquote
 
 from asyncua import ua
 from .ua_client import UaClient
@@ -29,7 +29,11 @@ class Client:
     use UaClient object, available as self.uaclient
     which offers the raw OPC-UA services interface.
     """
-    def __init__(self, url: str, timeout: float = 4):
+
+    _username = None
+    _password = None
+
+    def __init__(self, url: str, timeout: float = 4, watchdog_intervall: float = 1.0):
         """
         :param url: url of the server.
             if you are unsure of url, write at least hostname
@@ -37,14 +41,23 @@ class Client:
         :param timeout:
             Each request sent to the server expects an answer within this
             time. The timeout is specified in seconds.
+        :param watchdog_intervall:
+            The time between checking if the server is still alive. The timeout is specified in seconds.
         Some other client parameters can be changed by setting
         attributes on the constructed object:
         See the source code for the exhaustive list.
         """
         self.server_url = urlparse(url)
         # take initial username and password from the url
-        self._username = self.server_url.username
-        self._password = self.server_url.password
+        userinfo, have_info, hostinfo = self.server_url.netloc.rpartition('@')
+        if have_info:
+            username, have_password, password = userinfo.partition(':')
+            self._username = unquote(username)
+            if have_password:
+                self._password = unquote(password)
+            # remove credentials from url, preventing them to be sent unencrypted in e.g. send_hello
+            self.server_url = self.server_url.__class__(self.server_url[0], hostinfo, *self.server_url[2:])
+
         self.name = "Pure Python Async. Client"
         self.description = self.name
         self.application_uri = "urn:freeopcua:client"
@@ -55,6 +68,7 @@ class Client:
         self.session_timeout = 3600000  # 1 hour
         self._policy_ids = []
         self.uaclient: UaClient = UaClient(timeout)
+        self.uaclient.pre_request_hook = self.check_connection
         self.user_certificate = None
         self.user_private_key = None
         self._server_nonce = None
@@ -63,7 +77,10 @@ class Client:
         self.max_messagesize = 0  # No limits
         self.max_chunkcount = 0  # No limits
         self._renew_channel_task = None
+        self._monitor_server_task = None
         self._locale = ["en"]
+        self._watchdog_intervall = watchdog_intervall
+        self._closing: bool = False
 
     async def __aenter__(self):
         await self.connect()
@@ -141,11 +158,11 @@ class Client:
 
     async def set_security(
         self,
-        policy: ua.SecurityPolicy,
-        certificate: Union[str, uacrypto.CertProperties],
-        private_key: Union[str, uacrypto.CertProperties],
+        policy: Type[ua.SecurityPolicy],
+        certificate: Union[str, uacrypto.CertProperties, bytes],
+        private_key: Union[str, uacrypto.CertProperties, bytes],
         private_key_password: Optional[Union[str, bytes]] = None,
-        server_certificate: Optional[Union[str, uacrypto.CertProperties]] = None,
+        server_certificate: Optional[Union[str, uacrypto.CertProperties, bytes]] = None,
         mode: ua.MessageSecurityMode = ua.MessageSecurityMode.SignAndEncrypt,
     ):
         """
@@ -171,7 +188,7 @@ class Client:
 
     async def _set_security(
         self,
-        policy: ua.SecurityPolicy,
+        policy: Type[ua.SecurityPolicy],
         certificate: uacrypto.CertProperties,
         private_key: uacrypto.CertProperties,
         server_cert: uacrypto.CertProperties,
@@ -179,10 +196,10 @@ class Client:
     ):
 
         if isinstance(server_cert, uacrypto.CertProperties):
-            server_cert = await uacrypto.load_certificate(server_cert.path, server_cert.extension)
-        cert = await uacrypto.load_certificate(certificate.path, certificate.extension)
+            server_cert = await uacrypto.load_certificate(server_cert.path_or_content, server_cert.extension)
+        cert = await uacrypto.load_certificate(certificate.path_or_content, certificate.extension)
         pk = await uacrypto.load_private_key(
-            private_key.path,
+            private_key.path_or_content,
             private_key.password,
             private_key.extension,
         )
@@ -261,15 +278,20 @@ class Client:
             await self.open_secure_channel()
             try:
                 await self.create_session()
+                try:
+                    await self.activate_session(username=self._username, password=self._password, certificate=self.user_certificate)
+                except Exception:
+                    # clean up session
+                    await self.close_session()
+                    raise
             except Exception:
                 # clean up secure channel
-                self.close_secure_channel()
+                await self.close_secure_channel()
                 raise
         except Exception:
             # clean up open socket
             self.disconnect_socket()
             raise
-        await self.activate_session(username=self._username, password=self._password, certificate=self.user_certificate)
 
     async def disconnect(self):
         """
@@ -313,7 +335,7 @@ class Client:
         params.SecurityMode = self.security_policy.Mode
         params.RequestedLifetime = self.secure_channel_timeout
         # length should be equal to the length of key of symmetric encryption
-        params.ClientNonce = create_nonce(self.security_policy.symmetric_key_size)
+        params.ClientNonce = create_nonce(self.security_policy.secure_channel_nonce_length)
         result = await self.uaclient.open_secure_channel(params)
         if self.secure_channel_timeout != result.SecurityToken.RevisedLifetime:
             _logger.info("Requested secure channel timeout to be %dms, got %dms instead", self.secure_channel_timeout, result.SecurityToken.RevisedLifetime)
@@ -371,6 +393,7 @@ class Client:
         If you want o modify settings look at code of this methods
         and make your own
         """
+        self._closing = False
         desc = ua.ApplicationDescription()
         desc.ApplicationUri = self.application_uri
         desc.ProductUri = self.product_uri
@@ -406,11 +429,44 @@ class Client:
             _logger.warning("Requested session timeout to be %dms, got %dms instead", self.secure_channel_timeout, response.RevisedSessionTimeout)
             self.session_timeout = response.RevisedSessionTimeout
         self._renew_channel_task = asyncio.create_task(self._renew_channel_loop())
+        self._monitor_server_task = asyncio.create_task(self._monitor_server_loop())
         return response
+
+    async def check_connection(self):
+        # can be used to check if the client is still connected
+        # if not it throws the underlying exception
+        if self._renew_channel_task is not None:
+            if self._renew_channel_task.done():
+                await self._renew_channel_task
+        if self._monitor_server_task is not None:
+            if self._monitor_server_task.done():
+                await self._monitor_server_task
+        if self.uaclient._publish_task is not None:
+            if self.uaclient._publish_task.done():
+                await self.uaclient._publish_task
+
+    async def _monitor_server_loop(self):
+        """
+        Checks if the server is alive
+        """
+        timeout = min(self.session_timeout / 1000 / 2, self._watchdog_intervall)
+        try:
+            while not self._closing:
+                await asyncio.sleep(timeout)
+                # @FIXME handle state change
+                _ = await self.nodes.server_state.read_value()
+        except ConnectionError as e:
+            _logger.info("connection error in watchdog loop %s", e, exc_info=True)
+            await self.uaclient.inform_subscriptions(ua.StatusCodes.BadShutdown)
+            raise
+        except Exception:
+            _logger.exception("Error in watchdog loop")
+            await self.uaclient.inform_subscriptions(ua.StatusCodes.BadShutdown)
+            raise
 
     async def _renew_channel_loop(self):
         """
-        Renew the SecureChannel before the SessionTimeout will happen.
+        Renew the SecureChannel before the SecureChannelTimeout will happen.
         In theory we could do that only if no session activity
         but it does not cost much..
         """
@@ -418,14 +474,15 @@ class Client:
             # Part4 5.5.2.1:
             # Clients should request a new SecurityToken after 75 % of its lifetime has elapsed
             duration = self.secure_channel_timeout * 0.75 / 1000
-            while True:
+            while not self._closing:
                 await asyncio.sleep(duration)
                 _logger.debug("renewing channel")
                 await self.open_secure_channel(renew=True)
                 val = await self.nodes.server_state.read_value()
                 _logger.debug("server state is: %s ", val)
-        except asyncio.CancelledError:
-            pass
+        except ConnectionError as e:
+            _logger.info("connection error  in watchdog loop %s", e, exc_info=True)
+            raise
         except Exception:
             _logger.exception("Error while renewing session")
             raise
@@ -530,14 +587,27 @@ class Client:
         data, uri = security_policies.encrypt_asymmetric(pubkey, etoken, policy_uri)
         return data, uri
 
-    async def close_session(self) -> Coroutine:
+    async def close_session(self):
         """
         Close session
         """
+        self._closing = True
+        if self._monitor_server_task:
+            self._monitor_server_task.cancel()
+            try:
+                await self._monitor_server_task
+            except asyncio.CancelledError:
+                pass
+            except Exception:
+                _logger.exception("Error while closing watch_task")
+        # disable hook because we kill our monitor task, so we are going to get CancelledError at every request
+        self.uaclient.pre_request_hook = None
         if self._renew_channel_task:
             self._renew_channel_task.cancel()
             try:
                 await self._renew_channel_task
+            except asyncio.CancelledError:
+                pass
             except Exception:
                 _logger.exception("Error while closing secure channel loop")
         return await self.uaclient.close_session(True)

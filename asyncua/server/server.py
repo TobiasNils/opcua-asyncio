@@ -4,9 +4,10 @@ High level interface to pure python OPC-UA server
 
 import asyncio
 import logging
+import math
 from datetime import timedelta, datetime
 from urllib.parse import urlparse
-from typing import Coroutine, Optional, Tuple
+from typing import Coroutine, Optional, Tuple, Union
 
 from asyncua import ua
 from .binary_server_asyncio import BinaryServer
@@ -23,6 +24,7 @@ from ..common.shortcuts import Shortcuts
 from ..common.structures import load_type_definitions, load_enums
 from ..common.structures104 import load_data_type_definitions
 from ..common.ua_utils import get_nodes_of_namespace
+from ..common.connection import TransportLimits
 
 from ..crypto import security_policies, uacrypto
 
@@ -97,12 +99,22 @@ class Server:
         # enable all endpoints by default
         self._security_policy = [
             ua.SecurityPolicyType.NoSecurity, ua.SecurityPolicyType.Basic256Sha256_SignAndEncrypt,
-            ua.SecurityPolicyType.Basic256Sha256_Sign
+            ua.SecurityPolicyType.Basic256Sha256_Sign, ua.SecurityPolicyType.Aes128Sha256RsaOaep_SignAndEncrypt,
+            ua.SecurityPolicyType.Aes128Sha256RsaOaep_Sign
         ]
         # allow all certificates by default
         self._permission_ruleset = None
-        self._policyIDs = ["Anonymous", "Basic256Sha256", "Username"]
+        self._policyIDs = ["Anonymous", "Basic256Sha256", "Username", "Aes128Sha256RsaOaep"]
         self.certificate = None
+        # Use accectable limits
+        buffer_sz = 65535
+        max_msg_sz = 100 * 1024 * 1024  # 100mb
+        self.limits = TransportLimits(
+            max_recv_buffer=buffer_sz,
+            max_send_buffer=buffer_sz,
+            max_chunk_count=math.ceil(max_msg_sz / buffer_sz),  # Round up to allow max msg size
+            max_message_size=max_msg_sz
+        )
 
     async def init(self, shelf_file=None):
         await self.iserver.init(shelf_file)
@@ -194,14 +206,14 @@ class Server:
         return f"OPC UA Server({self.endpoint.geturl()})"
     __repr__ = __str__
 
-    async def load_certificate(self, path: str, format: str = None):
+    async def load_certificate(self, path_or_content: Union[str, bytes], format: str = None):
         """
         load server certificate from file, either pem or der
         """
-        self.certificate = await uacrypto.load_certificate(path, format)
+        self.certificate = await uacrypto.load_certificate(path_or_content, format)
 
-    async def load_private_key(self, path, password=None, format=None):
-        self.iserver.private_key = await uacrypto.load_private_key(path, password, format)
+    async def load_private_key(self, path_or_content: Union[str, bytes], password=None, format=None):
+        self.iserver.private_key = await uacrypto.load_private_key(path_or_content, password, format)
 
     def disable_clock(self, val: bool = True):
         """
@@ -354,6 +366,20 @@ class Server:
                     ua.SecurityPolicyFactory(security_policies.SecurityPolicyBasic256Sha256,
                                              ua.MessageSecurityMode.Sign, self.certificate, self.iserver.private_key,
                                              permission_ruleset=self._permission_ruleset))
+            if ua.SecurityPolicyType.Aes128Sha256RsaOaep_SignAndEncrypt in self._security_policy:
+                self._set_endpoints(security_policies.SecurityPolicyAes128Sha256RsaOaep,
+                                    ua.MessageSecurityMode.SignAndEncrypt)
+                self._policies.append(
+                    ua.SecurityPolicyFactory(security_policies.SecurityPolicyAes128Sha256RsaOaep,
+                                             ua.MessageSecurityMode.SignAndEncrypt, self.certificate,
+                                             self.iserver.private_key,
+                                             permission_ruleset=self._permission_ruleset))
+            if ua.SecurityPolicyType.Aes128Sha256RsaOaep_Sign in self._security_policy:
+                self._set_endpoints(security_policies.SecurityPolicyAes128Sha256RsaOaep, ua.MessageSecurityMode.Sign)
+                self._policies.append(
+                    ua.SecurityPolicyFactory(security_policies.SecurityPolicyAes128Sha256RsaOaep,
+                                             ua.MessageSecurityMode.Sign, self.certificate, self.iserver.private_key,
+                                             permission_ruleset=self._permission_ruleset))
 
     def _set_endpoints(self, policy=ua.SecurityPolicy, mode=ua.MessageSecurityMode.None_):
         idtokens = []
@@ -410,7 +436,7 @@ class Server:
         await self.iserver.start()
         try:
             ipaddress, port = self._get_bind_socket_info()
-            self.bserver = BinaryServer(self.iserver, ipaddress, port)
+            self.bserver = BinaryServer(self.iserver, ipaddress, port, self.limits)
             self.bserver.set_policies(self._policies)
             await self.bserver.start()
         except Exception as exp:

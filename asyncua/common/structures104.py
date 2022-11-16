@@ -78,14 +78,15 @@ async def new_struct(
     sdef = ua.StructureDefinition()
     if is_union:
         sdef.StructureType = ua.StructureType.Union
+        sdef.BaseDataType = server.nodes.base_union_type.nodeid
     else:
+        sdef.BaseDataType = server.nodes.base_structure_type.nodeid
         sdef.StructureType = ua.StructureType.Structure
         for sfield in fields:
             if sfield.IsOptional:
                 sdef.StructureType = ua.StructureType.StructureWithOptionalFields
                 break
     sdef.Fields = fields
-    sdef.BaseDataType = server.nodes.base_data_type.nodeid
     sdef.DefaultEncodingId = enc.nodeid
 
     await dtype.write_data_type_definition(sdef)
@@ -131,7 +132,7 @@ def clean_name(name):
     return newname
 
 
-def get_default_value(uatype, enums=None):
+def get_default_value(uatype, enums=None, hack=False):
     if hasattr(ua, uatype):
         # That type is know, make sure this is not a subtype
         dtype = getattr(ua, uatype)
@@ -156,7 +157,11 @@ def get_default_value(uatype, enums=None):
         # We have an enum, try to initilize it correctly
         val = list(getattr(ua, uatype).__members__)[0]
         return f"ua.{uatype}.{val}"
-    return f"ua.{uatype}()"
+    if hack:
+        # FIXME: This is horrible but necssary for old struc support until
+        # someone fixes dependencies og we deprecated it
+        return f"field(default_factory=lambda :ua.{uatype}())"
+    return f"field(default_factory=ua.{uatype})"
 
 
 def make_structure_code(data_type, struct_name, sdef, log_error=True):
@@ -181,9 +186,9 @@ class {struct_name}{base_class}:
 """
 
     if sdef.StructureType == ua.StructureType.StructureWithOptionalFields:
-        code += "    Encoding: ua.Byte = field(default=0, repr=False, init=False, compare=False)\n"
+        code += "    Encoding: ua.UInt32 = field(default=0, repr=False, init=False, compare=False)\n"
     elif is_union:
-        code += "    Encoding: ua.Byte = field(default=0, repr=False, init=False, compare=False)\n"
+        code += "    Encoding: ua.UInt32 = field(default=0, repr=False, init=False, compare=False)\n"
     fields = []
     for sfield in sdef.Fields:
         fname = clean_name(sfield.Name)
@@ -200,6 +205,8 @@ class {struct_name}{base_class}:
             uatype = ua.enums_by_datatype[sfield.DataType].__name__
         elif sfield.DataType in ua.basetype_by_datatype:
             uatype = ua.basetype_by_datatype[sfield.DataType]
+        elif sfield.DataType == data_type:
+            uatype = struct_name
         else:
             if log_error:
                 logger.error(f"Unknown datatype for field: {sfield} in structure:{struct_name}, please report")
@@ -210,7 +217,11 @@ class {struct_name}{base_class}:
         else:
             default_value = get_default_value(uatype)
 
-        uatype = f"ua.{uatype}"
+        if sfield.DataType != data_type:
+            uatype = f"ua.{uatype}"
+        else:
+            # when field point to itself datatype use forward reference for typing
+            uatype = f"'ua.{uatype}'"
         if sfield.ValueRank >= 1 and uatype == 'Char':
             uatype = 'String'
         elif sfield.ValueRank >= 1 or sfield.ArrayDimensions:
@@ -221,6 +232,7 @@ class {struct_name}{base_class}:
     if is_union:
         # Generate getter and setter to mimic opc ua union access
         names = [f[1] for f in fields]
+        code += "    _union_types = [" + ','.join(names) + "]\n"
         code += "    Value: Union[None, " + ','.join(names) + "] = field(default=None, init=False)"
         for enc_idx, fd in enumerate(fields):
             name, uatype, _ = fd
@@ -312,7 +324,7 @@ class DataTypeSorter:
             if dep_nodeid not in self.dtype_index:
                 continue
             dep = self.dtype_index[dep_nodeid]
-            if dep.depends_on(other):
+            if dep != self and dep.depends_on(other):
                 return True
         return False
 
@@ -348,7 +360,7 @@ async def _get_parent_types(node: Node):
         refs = await tmp_node.get_references(refs=ua.ObjectIds.HasSubtype, direction=ua.BrowseDirection.Inverse)
         if not refs or refs[0].NodeId.NamespaceIndex == 0 and refs[0].NodeId.Identifier == 22:
             return parents
-        tmp_node = Node(tmp_node.server, refs[0])
+        tmp_node = Node(tmp_node.session, refs[0])
         parents.append(tmp_node)
     logger.warning("Went 10 layers up while look of subtype of given node %s, something is wrong: %s", node, parents)
 
@@ -389,7 +401,6 @@ def make_basetype_code(name, parent_datatype):
     env = {}
     env['ua'] = ua
     logger.debug("Executing code: %s", code)
-    print(code)
     try:
         exec(code, env)
     except Exception:
@@ -488,7 +499,6 @@ class {name}({enum_type}):
         name = clean_name(sfield.Name)
         value = sfield.Value if not option_set else (1 << sfield.Value)
         code += f"    {name} = {value}\n"
-    logger.error(f"{name} - {sfield} {option_set} {code}")
     return code
 
 

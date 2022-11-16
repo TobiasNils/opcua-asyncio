@@ -1,8 +1,9 @@
 import logging
 from enum import Enum
-from typing import Coroutine, Iterable, Optional
+from typing import Coroutine, Iterable, Optional, List
 
 from asyncua import ua
+from asyncua.common.session_interface import AbstractSession
 from ..common.callback import CallbackType, ServerItemCallback
 from ..common.utils import create_nonce, ServiceError
 from .address_space import AddressSpace
@@ -16,7 +17,7 @@ class SessionState(Enum):
     Closed = 2
 
 
-class InternalSession:
+class InternalSession(AbstractSession):
     """
 
     """
@@ -50,6 +51,9 @@ class InternalSession:
 
     async def get_endpoints(self, params=None, sockname=None):
         return await self.iserver.get_endpoints(params, sockname)
+
+    def is_activated(self) -> bool:
+        return self.state == SessionState.Activated
 
     async def create_session(self, params, sockname=None):
         self.logger.info('Create session request')
@@ -139,6 +143,21 @@ class InternalSession:
     async def browse(self, params):
         return self.iserver.view_service.browse(params)
 
+    async def browse_next(self, parameters: ua.BrowseNextParameters) -> List[ua.BrowseResult]:
+        # TODO 
+        # ContinuationPoint: https://reference.opcfoundation.org/v104/Core/docs/Part4/7.6/
+        # Add "ContinuationPoints" and some form of management for them to current sessionimplementation
+        # BrowseNext: https://reference.opcfoundation.org/Core/Part4/v104/5.8.3/
+        raise NotImplementedError
+
+    async def register_nodes(self, nodes: List[ua.NodeId]) -> List[ua.NodeId]:
+        self.logger.info("Node registration not implemented")
+        return nodes
+
+    async def unregister_nodes(self, nodes: List[ua.NodeId]) -> List[ua.NodeId]:
+        self.logger.info("Node registration not implemented")
+        return nodes
+
     async def translate_browsepaths_to_nodeids(self, params):
         return self.iserver.view_service.translate_browsepaths_to_nodeids(params)
 
@@ -202,3 +221,8 @@ class InternalSession:
 
     def modify_subscription(self, params, callback):
         return self.subscription_service.modify_subscription(params, callback)
+
+    async def transfer_subscriptions(self, params: ua.TransferSubscriptionsParameters) -> List[ua.TransferResult]:
+        # Subscriptions aren't bound to a Session and can be transfered!
+        # https://reference.opcfoundation.org/Core/Part4/v104/5.13.7/
+        raise NotImplementedError
