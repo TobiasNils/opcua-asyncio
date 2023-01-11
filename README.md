@@ -5,6 +5,10 @@ http://freeopcua.github.io/, https://github.com/FreeOpcUa/opcua-asyncio
 
 [![PyPI Package](https://badge.fury.io/py/asyncua.svg)](https://badge.fury.io/py/asyncua)
 
+# asyncua-mod
+asyncua-mod is a fork of [opcua-asyncio](#opcua-asyncio) and kept in sync with the official repo.
+The only addition is that it defaults to historized nodes to persisting their value(s).
+
 # opcua-asyncio
 
 opcua-asyncio is an asyncio-based asynchronous OPC UA client and server based on python-opcua, removing support of python < 3.7.
