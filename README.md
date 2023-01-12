@@ -5,9 +5,11 @@ http://freeopcua.github.io/, https://github.com/FreeOpcUa/opcua-asyncio
 
 [![PyPI Package](https://badge.fury.io/py/asyncua.svg)](https://badge.fury.io/py/asyncua)
 
-# asyncua-mod
-asyncua-mod is a fork of [opcua-asyncio](#opcua-asyncio) and kept in sync with the official repo.
-The only addition is that it defaults to historized nodes to persisting their value(s).
+# About this fork
+This fork of [opcua-asyncio](#opcua-asyncio) aims to be in sync with the official repo.
+There are only two additions I made for my convenience and I am not sure of that is strictly in line with the OPC-UA specifications:
+- the database table created for a historized node is named with a reproducible naming scheme
+- based on a reproducible table name,  historized nodes are re-linked to the same data table and thereby persist their value(s) through restarts of the server.
 
 # opcua-asyncio
 
