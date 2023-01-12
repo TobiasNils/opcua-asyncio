@@ -12,7 +12,7 @@ needs_pytest = {'pytest', 'test', 'ptr'}.intersection(sys.argv)
 pytest_runner = ['pytest-runner'] if needs_pytest else []
 
 setup(
-    name="asyncua-mod",
+    name="asyncua",
     version="1.0.1",
     description="Pure Python OPC-UA client and server library",
     long_description=long_description,
