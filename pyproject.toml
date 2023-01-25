@@ -1,0 +1,55 @@
+[build-system]
+requires = ["setuptools", "setuptools-scm",
+    "aiofiles", "aiosqlite", "python-dateutil", 
+    "pytz", "cryptography", "sortedcontainers", 
+    "importlib-metadata;python_version<'3.8'"
+]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "asyncua"
+version = "1.0.1"
+authors = [
+    {name = "Olivier Roulet-Dubonnet", email = "olivier.roulet@gmail.com"},
+]
+description = "Pure Python OPC-UA client and server library"
+readme = "README.md"
+requires-python = ">=3.7"
+keywords = ["OPC-UA"]
+license = {text = "GNU Lesser General Public License v3 or later"}
+classifiers = [
+    "Programming Language :: Python :: 3.6",
+    "Programming Language :: Python :: 3.7",
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "License :: OSI Approved :: GNU Lesser General Public License v3 or later (LGPLv3+)",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
+[project.urls]
+"Homepage" = "http://freeopcua.github.io/"
+
+[project.scripts]
+uaread = "asyncua.tools:uaread"
+uals = "asyncua.tools:uals"
+uabrowse = "asyncua.tools:uals"
+uawrite = "asyncua.tools:uawrite"
+uasubscribe = "asyncua.tools:uasubscribe"
+uahistoryread = "asyncua.tools:uahistoryread"
+uaclient = "asyncua.tools:uaclient"
+uaserver = "asyncua.tools:uaserver"
+uadiscover = "asyncua.tools:uadiscover"
+uacall = "asyncua.tools:uacall"
+uageneratestructs = "asyncua.tools:uageneratestructs"
+
+[project.optional-dependencies]
+test = [
+    "pytest",
+    "pytest-mock",
+    "asynctest",
+]
+# ... other project metadata fields as specified in:
+#     https://packaging.python.org/en/latest/specifications/declaring-project-metadata/
+
+
